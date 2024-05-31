@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dictionary Manager</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+                background-color: lightslategrey;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .dictionary {
+            width: 90%;
+            margin: 20px 0;
+        }
+        .dictionary-list {
+            width: 90%;
+            height: 300px;
+            overflow-y: scroll;
+            border: 1px solid #ddd;
+            margin: 20px 0;
+        }
+        button{
+            display:block;
+        }
+        .dictionary-item {
+            font-family: none;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: lightsalmon;
+        }
+        textarea{
+            width:90%
+        }
+        .context-window {
+            width: 90%;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 20px 0;
+        }
+        .context-entry{
+                border-bottom: 1px solid floralwhite;
+                margin-top: 8px;
+                margin-left: auto;
+                background-color: beige;
+                padding: 5px;
+        }
+        .search-bar {
+            margin-bottom: 10px;
+            width: 90%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dictionary Manager</h1>
+
+
+
+        <div class="dictionary">
+            <h2>Dynamic Dictionary</h2>
+            <input type="text" id="dynamic-search" class="search-bar" placeholder="Search dynamic dictionary..." oninput="searchDynamicDictionary()">
+            <div id="dynamic-dictionary-list" class="dictionary-list"></div>
+            <button style="width:90%"  onclick="saveDynamicDictionary()">Save</button>
+        </div>
+
+        <div id="context-window" class="context-window">
+            <h2>Contexts</h2>
+            <div id="contexts"></div>
+        </div>
+         <div class="dictionary">
+            <h2>Base English Grammar</h2>
+            <input type="text" id="base-search" class="search-bar" placeholder="Search base dictionary..." oninput="searchBaseDictionary()">
+            <div id="base-dictionary-list" class="dictionary-list"></div>
+            <textarea id="add-words-area" placeholder="Add multiple words (one per line)"></textarea>
+            <button style="width:90%" onclick="addMultipleBaseWords()">Add Words</button>
+            <button style="width:90%" onclick="saveBaseDictionary()">Save</button>
+        </div>
+    </div>
+
+    <script>
+        let dynamicDictionary = {};
+        let baseDictionary = [];
+
+        async function fetchDictionary(filename) {
+            const response = await fetch(filename);
+            return await response.text();
+        }
+
+        async function loadDictionaries() {
+            const baseDict = await fetchDictionary('base_english_grammar.txt');
+            baseDictionary = baseDict.split('\r\n').map(word => word.trim());
+            renderBaseDictionary();
+
+            const dynamicDict = await fetchDictionary('dynamic_dictionary.json');
+            dynamicDictionary = JSON.parse(dynamicDict);
+            renderDynamicDictionary();
+        }
+
+        function renderBaseDictionary() {
+            const list = document.getElementById('base-dictionary-list');
+            list.innerHTML = '';
+            baseDictionary.forEach(word => {
+                const item = document.createElement('div');
+                item.className = 'dictionary-item';
+                item.innerHTML = `
+                    <span>${word}</span>
+                    <button onclick="removeFromBaseDictionary('${word}')">Remove</button>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        function renderDynamicDictionary() {
+            const list = document.getElementById('dynamic-dictionary-list');
+            list.innerHTML = '';
+            for (const [word, contexts] of Object.entries(dynamicDictionary)) {
+                const item = document.createElement('div');
+                item.className = 'dictionary-item';
+                item.innerHTML = `
+                    <span onclick="showContexts('${word}')">${word}</span>
+                    <button onclick="moveToBaseDictionary('${word}')">Move to Base</button>
+                `;
+                list.appendChild(item);
+            }
+        }
+
+        function showContexts(word) {
+            const contextWindow = document.getElementById('contexts');
+            contextWindow.innerHTML = '';
+            dynamicDictionary[word].forEach(context => {
+                const contextItem = document.createElement('div');
+                contextItem.classList=["context-entry"]
+                contextItem.textContent = context;
+                contextWindow.appendChild(contextItem);
+            });
+        }
+
+        function moveToBaseDictionary(word) {
+            baseDictionary.push(word);
+            renderBaseDictionary();
+            delete dynamicDictionary[word];
+            renderDynamicDictionary();
+        }
+
+        function removeFromBaseDictionary(word) {
+            baseDictionary = baseDictionary.filter(item => item !== word);
+            renderBaseDictionary();
+        }
+
+        function addMultipleBaseWords() {
+            const textArea = document.getElementById('add-words-area');
+            const newWords = textArea.value.split('\r\n').map(word => word.trim()).filter(word => word !== '');
+            baseDictionary = [...new Set([...baseDictionary, ...newWords])];
+            textArea.value = '';
+            renderBaseDictionary();
+        }
+
+        async function saveBaseDictionary() {
+            const data = baseDictionary.join('\r\n');
+            await fetch('/save_base_dictionary', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/plain',
+                },
+                body: data
+            });
+        }
+
+        async function saveDynamicDictionary() {
+            const data = JSON.stringify(dynamicDictionary, null, 4);
+            await fetch('/save_dynamic_dictionary', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: data
+            });
+        }
+
+        function searchBaseDictionary() {
+            const searchTerm = document.getElementById('base-search').value.toLowerCase();
+            const filteredWords = baseDictionary.filter(word => word.toLowerCase().includes(searchTerm));
+            const list = document.getElementById('base-dictionary-list');
+            list.innerHTML = '';
+            filteredWords.forEach(word => {
+                const item = document.createElement('div');
+                item.className = 'dictionary-item';
+                item.innerHTML = `
+                    <span>${word}</span>
+                    <button onclick="removeFromBaseDictionary('${word}')">Remove</button>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        function searchDynamicDictionary() {
+            const searchTerm = document.getElementById('dynamic-search').value.toLowerCase();
+            const list = document.getElementById('dynamic-dictionary-list');
+            list.innerHTML = '';
+            for (const [word, contexts] of Object.entries(dynamicDictionary)) {
+                if (word.toLowerCase().includes(searchTerm)) {
+                    const item = document.createElement('div');
+                    item.className = 'dictionary-item';
+                    item.innerHTML = `
+                        <span onclick="showContexts('${word}')">${word}</span>
+                        <button onclick="moveToBaseDictionary('${word}')">Move to Base</button>
+                    `;
+                    list.appendChild(item);
+                }
+            }
+        }
+
+        loadDictionaries();
+    </script>
+</body>
+</html>
